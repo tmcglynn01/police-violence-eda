@@ -1,4 +1,9 @@
 .RData
 .Rhistory
-spreadsheets/
 practice.R
+MedianHouseholdIncome2015.csv
+PercentagePeopleBelowPovertyLevel.csv
+PercentOver25CompletedHighSchool.csv
+ShareRaceByCity.csv
+PoliceKillingsUS.csv
+

@@ -4,14 +4,13 @@ library(magrittr)
 # Load the initial police tibble. We need to do some tidying with this
 police <- read.csv('spreadsheets/PoliceKillingsUS.csv')
 str(police)
-
-# Check some of the columns
-1- sum(police$gender == 'M') / nrow(police)
-unique(police$threat_level)
 unique(police$manner_of_death)
-unique(police$flee)
-unique(police$race)
 unique(police$armed)
+1- sum(police$gender == 'M') / nrow(police)
+unique(police$race)
+sample(police$city, 20)
+unique(police$threat_level)
+unique(police$flee)
 
 # Noise: since females account for only 4.2% of the total observations, and the
 # sake of this analysis, we'll be leaving that column out. Further, looking at
@@ -47,114 +46,62 @@ unique(police$armed)
   mutate(just_force = armed == 'gun') %>%
   arrange(year, month, day))
 
-# Base Plot
-bplot <- ggplot(df)
-
-# Racial breakdown by month 
-bplot + geom_bar(mapping = aes(x = month, fill = race))
-# Looks like there may be a clear quarterly trend?
-bplot + 
-  geom_bar(mapping = aes(x = quarter(month), fill = race)) +
-  facet_wrap(~ year)
-# Only for 2016
-# 2017 data is incomplete
-
-# Interested in some breakdowns by race for later
-poc <- df %>% filter(race %in% c('B', 'H', 'N'))
-white <- df %>% filter(race == 'W')
-
-# Let's start looking at city data
-length(unique(df$city))
-top_cities <- df %>%
-  group_by(city, state) %>%
-  select(-name) %>%
-  summarize(city_count = n()) %>%
-  arrange(desc(city_count)) %>%
-  filter(city_count >= 14)
-
-# Start importing city data, filter for top_cities
-income <- read.csv('spreadsheets/MedianHouseholdIncome2015.csv')
-str(income)
-names(income)
-
-re <- '(.*)(\\s\\w+)$'
-income <- income %>%
-  rename(state = 'Geographic.Area', 
-         city = 'City', 
-         median_income = 'Median.Income') %>%
-  group_by(city) %>%
-  # Seems like there is a classification for each city after their name?
-  mutate(city = sub(re, '\\1', city))%>%
-  filter(city %in% top_cities$city & state %in% top_cities$state)
-
-# Join tables
-top_cities <- left_join(top_cities, income)
-
-poverty <- read.csv('spreadsheets/PercentagePeopleBelowPovertyLevel.csv')
-str(poverty)
-poverty <- poverty %>%
-  rename(state = 'Geographic.Area', city = 'City') %>%
-  group_by(city) %>%
-  mutate(city = sub(re, '\\1', city)) %>%
-  filter(city %in% top_cities$city & state %in% top_cities$state)
-
-(top_cities <- left_join(top_cities, poverty))
-
-high_school <- read.csv('spreadsheets/PercentOver25CompletedHighSchool.csv')
-str(high_school)
-high_school <- high_school %>%
-  rename(state = 'Geographic.Area', 
-         city = 'City', 
-         hs_completion = 'percent_completed_hs') %>%
-  group_by(city) %>%
-  mutate(city = sub(re, '\\1', city)) %>%
-  filter(city %in% top_cities$city & state %in% top_cities$state)
-
-(top_cities <- left_join(top_cities, high_school))
-
-race_stats <- read.csv('spreadsheets/ShareRaceByCity.csv')
-str(race_stats)
-race_stats <- race_stats %>%
-  rename(state = 'Geographic.area', city = 'City') %>%
-  group_by(city) %>%
-  mutate(city = sub(re, '\\1', city)) %>%
-  filter(city %in% top_cities$city & state %in% top_cities$state) %>%
-  rename(w = 'share_white', b = 'share_black', n = 'share_native_american',
-         a = 'share_asian', h = 'share_hispanic') %>%
-  #mutate_at(vars(w, b, n, a, h), integer)
-  print
-
-top_cities <- left_join(top_cities, race_stats)
-
-# Just some memory cleanup
-rm(income, poverty, high_school, race_stats, re)
-
-# Clean tibble df
-df
-
-
+# Tidy the data types
 df$name %<>% as.character
 df$year %<>% as.integer
 df$month %<>% as.integer
 df$day %<>% as.integer
-df
 
-top_cities
-top_cities$median_income <- as.numeric(levels(top_cities$median_income))[top_cities$median_income]
-top_cities$poverty_rate <- as.numeric(levels(top_cities$poverty_rate))[top_cities$poverty_rate]
-top_cities$hs_completion <- as.numeric(levels(top_cities$hs_completion))[top_cities$hs_completion]
-top_cities$w <- as.numeric(levels(top_cities$w))[top_cities$w]
-top_cities$b <- as.numeric(levels(top_cities$b))[top_cities$b]
-top_cities$n <- as.numeric(levels(top_cities$n))[top_cities$n]
-top_cities$a <- as.numeric(levels(top_cities$a))[top_cities$a]
-top_cities$h <- as.numeric(levels(top_cities$h))[top_cities$h]
-top_cities
+# Metro statistical data here
+income <- read.csv('spreadsheets/MedianHouseholdIncome2015.csv')
+poverty <- read.csv('spreadsheets/PercentagePeopleBelowPovertyLevel.csv')
+high_school <- read.csv('spreadsheets/PercentOver25CompletedHighSchool.csv')
+race_stats <- read.csv('spreadsheets/ShareRaceByCity.csv')
 
-top_cities <- top_cities %>% 
-  mutate(w = w/100, b = b/100, n = n/100, a = a/100, h = h/100,
-         poverty_rate = poverty_rate/100, hs_completion = hs_completion/100)
-top_cities
-df
+str(income)
+str(poverty)
+str(high_school)
+str(race_stats)
+
+# Create a 'cities' data frame from 'df' which will hold all unique city names 
+# and their count of police killings, arranged by state then city, which seemed
+# like the simplest way to match the tables quickly, given the data on hand
+cities <- df %>%
+  group_by(city, state) %>%
+  select(-name) %>%
+  summarize(deaths = n()) %>%
+  arrange(state, city)
+
+income <- income %>% group_by(City) %>% arrange(Geographic.Area, City)
+poverty <- poverty %>% group_by(City) %>% arrange(Geographic.Area, City)
+high_school <- high_school %>% group_by(City) %>% arrange(Geographic.Area, City)
+race_stats <- race_stats %>% 
+  rename(Geographic.Area = Geographic.area) %>%
+  group_by(City) %>% 
+  arrange(Geographic.Area, City)
+stats <- left_join(income, poverty)
+stats <- left_join(stats, high_school)
+stats <- left_join(stats, race_stats)
+
+# Cleans up some column names and runs a regular expression through the city
+# names to make match against 'df' containing the police killings data. 
+# Looks like it's statistical classification was appended in each table?
+stats <- stats %>% 
+  rename(state = Geographic.Area, city = City, income = Median.Income,
+         hs_completion = percent_completed_hs, W = share_white, B = share_black,
+         N = share_native_american, A = share_asian, H = share_hispanic,
+         poverty = poverty_rate) %>%
+  mutate(city = sub('(.*)(\\s\\w+)$', '\\1', city))
+
+cities <- left_join(cities, stats)
+cities$income <- (as.numeric(levels(cities$income))[cities$income])
+cities$poverty <- (as.numeric(levels(cities$poverty))[cities$poverty]) / 100
+cities$hs_completion <- (as.numeric(levels(cities$hs_completion))[cities$hs_completion]) / 100
+cities$W <- (as.numeric(levels(cities$W))[cities$W]) / 100
+cities$B <- (as.numeric(levels(cities$B))[cities$B]) / 100
+cities$N <- (as.numeric(levels(cities$N))[cities$N]) / 100
+cities$A <- (as.numeric(levels(cities$A))[cities$A]) / 100
+cities$H <- (as.numeric(levels(cities$H))[cities$H]) / 100
 
 # Number of shoots correlated with each of the city data variables - scatterplots
 # Scatter plots use two continuous variables
@@ -166,6 +113,67 @@ df
 # Binary variables are good for proportions
 # Histograms (A, B) for cities racial breakdowns by year?
 # Whites vs. PoC
-ggplot(data = top_cities, 
-       mapping = aes(x = poverty_rate, y = city_count, fill = city)) +
-  geom_point()
+
+### Plots by time
+ggplot(df) + 
+  geom_bar(mapping = aes(x = month(month, TRUE), fill = race)) +
+  facet_grid(year ~ .) +
+  labs(title = 'Deaths by Month for Each Year, Total by Race',
+       x = 'Month', y = 'Count of Deaths')
+ggplot(df %>% filter(year != 2017)) + #2017 incomplete skews proportion
+  geom_bar(mapping = aes(x = month(month, TRUE), 
+                         y = stat(prop),
+                         group = 1,
+                         fill = race)) +
+  facet_wrap(~ race, nrow = 4) +
+  ggtitle('Proportion of Deaths by Month for Each Race') +
+  labs(x = 'Month', y = 'Proportion')
+
+### Use of just force by race
+ggplot(df) + #IBID, buggy race data
+  geom_bar(mapping = aes(x = race, fill = just_force)) +
+  facet_wrap(~ year)
+
+
+### Weapons involved
+df %>% 
+  select(age, armed) %>%
+  group_by(age, armed) %>%
+  mutate(age = cut(age, breaks = c(0, 18, 30, seq(40, 100, by = 10)))) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count))
+View(df %>%
+  select(armed, month) %>%
+  group_by(armed) %>%
+  summarize(count = n(), mode = month(max(month),label = TRUE)) %>%
+  arrange(desc(count)))
+
+### Age of victims
+ggplot(df) +
+  geom_boxplot(mapping = aes(x = race, y = age, fill = race)) +
+  scale_fill_brewer(palette = 'Reds') +
+  scale_y_continuous(breaks = seq(10, 100, by = 10))
+summary(df$age)
+
+# Change df ages into bins:
+# 0-18, 18-25, 25-35, 35-45, 45-65, 65+
+df <- df %>% mutate(age = cut(age, breaks = c(0, 18, 25, 35, 45, 65, 100)))
+# Add column for PoC (B/H/N)
+df <- df %>% mutate(is_poc = race %in% c('B', 'H', 'N'))
+
+age_poc <- df %>%
+  filter((is_poc == TRUE) | (race == 'W')) %>%
+  select(id, race, age, just_force, is_poc) %>%
+  drop_na()
+ggplot(age_poc, mapping = aes(x = age, fill = race)) +
+  geom_bar(stat = 'count', position = 'fill') +
+  scale_fill_brewer(palette = 'Spectral') +
+  facet_wrap(~ just_force) +
+  labs(title = 'Use of Justified Force by Age and Race',
+       y = 'Proportion of deaths', x = 'Age of Victim')
+
+
+
+
+
+

@@ -1,0 +1,249 @@
+---
+title: "Analysis of Killings by US Police"
+author: "Trevor McGlynn"
+date: 2020-06-24
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(magrittr)
+
+police <- read.csv('PoliceKillingsUS.csv')
+```
+## Dataset for Police Killings
+This first dataset contains observations for police killings which occurred in the US. It's variables are a name, date, and ID for each case, the city and state where the incident occurred, the victim's age and race, and some other details about the victim's encounter with police (such as whether they had a weapon, or whether the police officer was wearing a body cam). 
+
+```{r polive-overview}
+unique(police$manner_of_death)
+sample(unique(police$armed), 20)
+unique(police$race)
+sample(police$city, 20)
+unique(police$threat_level)
+unique(police$flee)
+```
+From this set, we can make some selections on what data will be pertinent to our analysis. Since females account for only `r (1- sum(police$gender == 'M') / nrow(police)) * 100`% of the total observations we'll be leaving that column out. Further, looking at the variables `threat_level` and `manner_of_death`, neither seem to determine anything useful. Variable 'threat_level' contains 
+factors (attack, other, undetermined) that don't sound reliable, or meaningful: 2 of 3 are ambiguous. Variable 'manner_of_death' contains factors `unique(police$manner_of_death)`. For an analysis purely interested in fatalities it seems inconsequential to look at what other injury occurred and just be looking at the nature of the fatality and some other statistical data related to the environment where it happened.
+
+That said, the scope of this analysis will look at the following from this table:
+* Factors during police encounter (race, weapons, mental illness)
+* City and state
+* Body camera usage
+* Dates (full annual data for 2015 and 2016, partial 2017)
+```{r pipe-police-tbl}
+# This pipe creates tibble 'df' from 'police' with column selections.
+# Adds: year, month, day, just_force
+# 'just_force': Let's suppose justified use of force would be when an officer 
+# encounters someone who has equal power of force (another gun). We'll look at 
+# those in a different context. The use of force is arguably more nuanced than 
+# this, however it creates a good baseline to frame what is, and is not, 
+# 'appropriate' use of deadly force by equally matching force available.
+
+police <- police %>%
+  group_by(id) %>%
+  filter(gender == 'M') %>%
+  select(-gender, -manner_of_death, -threat_level) %>%
+  rename(illness = signs_of_mental_illness, cam = body_camera) %>%
+  mutate(date = dmy(as.character(date)),
+         year = year(date),
+         month = month(date),
+         day = day(date),
+         name = as.character(name),
+         just_force = armed == 'gun') %>%
+  select(-date) %>%
+  arrange(year, month, day)
+```
+## Dataset for Demographic Data
+This next data set joins demographics for cities across the US. Statistics included are the following:
+* Median Income for 2015
+* Percentage of People Below Poverty Level
+* Percent of Population > 25 Who Completed High School
+* Share of Race by City
+
+These will be joined with a cities table based on city and state. The `cities` table is derived from the `police` table and will include all cities where there was a victim from a police shooting, and a count of cases for that particular city. We'll also tidy the data for upcoming statistical summaries. 
+```{r demographics-tidying, message=FALSE, warning=FALSE}
+# Create a 'cities' data frame from 'df' which will hold all unique city names 
+# and their count of police killings, arranged by state then city, which seemed
+# like the simplest way to match the tables quickly, given the data on hand
+cities <- police %>%
+  group_by(city, state) %>%
+  select(-name) %>%
+  summarize(deaths = n()) %>%
+  arrange(state, city)
+
+# Metro statistical data here
+stats <- read.csv('MedianHouseholdIncome2015.csv') %>%
+  group_by(City) %>% 
+  arrange(Geographic.Area, City)
+stats <- left_join(stats, read.csv('PercentagePeopleBelowPovertyLevel.csv') %>%
+  group_by(City) %>% 
+  arrange(Geographic.Area, City))
+stats <- left_join(stats, read.csv('PercentOver25CompletedHighSchool.csv') %>%
+  group_by(City) %>% 
+  arrange(Geographic.Area, City))
+stats <- left_join(stats, read.csv('ShareRaceByCity.csv') %>%
+  rename(Geographic.Area = Geographic.area) %>%
+  group_by(City) %>% 
+  arrange(Geographic.Area, City))
+
+# Cleans up some column names and runs a regular expression through the city
+# names to make match against 'df' containing the police killings data. 
+# Looks like it's statistical classification was appended in each table?
+stats <- stats %>% 
+  rename(state = Geographic.Area, 
+         city = City, 
+         income = Median.Income,
+         hs_completion = percent_completed_hs, 
+         W = share_white, 
+         B = share_black,
+         N = share_native_american, 
+         A = share_asian, 
+         H = share_hispanic,
+         poverty = poverty_rate) %>%
+  mutate(city = sub('(.*)(\\s\\w+)$', '\\1', city))
+
+cities <- left_join(cities, stats)
+cities$income <- (as.numeric(levels(cities$income))[cities$income])
+cities$poverty <- (as.numeric(levels(cities$poverty))[cities$poverty]) / 100
+cities$hs_completion <- (as.numeric(levels(cities$hs_completion))[cities$hs_completion]) / 100
+cities$W <- (as.numeric(levels(cities$W))[cities$W]) / 100
+cities$B <- (as.numeric(levels(cities$B))[cities$B]) / 100
+cities$N <- (as.numeric(levels(cities$N))[cities$N]) / 100
+cities$A <- (as.numeric(levels(cities$A))[cities$A]) / 100
+cities$H <- (as.numeric(levels(cities$H))[cities$H]) / 100
+rm(stats)
+cities
+```
+
+# Univariate Plots Section
+This is a prelinary exploration of the dataset for summaries and univariate plots.
+
+> **Tip**: In this section, you should perform some preliminary exploration of
+your dataset. Run some summaries of the data and create univariate plots to
+understand the structure of the individual variables in your dataset. Don't
+forget to add a comment after each plot or closely-related group of plots!
+There should be multiple code chunks and text sections; the first one below is
+just to help you get started.
+
+```{r echo=FALSE, Univariate_Plots}
+
+```
+
+# Univariate Analysis
+
+> **Tip**: Now that you've completed your univariate explorations, it's time to
+reflect on and summarize what you've found. Use the questions below to help you
+gather your observations and add your own if you have other thoughts!
+
+### What is the structure of your dataset?
+
+### What is/are the main feature(s) of interest in your dataset?
+
+### What other features in the dataset do you think will help support your \
+investigation into your feature(s) of interest?
+
+### Did you create any new variables from existing variables in the dataset?
+
+### Of the features you investigated, were there any unusual distributions? \
+Did you perform any operations on the data to tidy, adjust, or change the form \
+of the data? If so, why did you do this?
+
+# Bivariate Plots Section
+
+> **Tip**: Based on what you saw in the univariate plots, what relationships
+between variables might be interesting to look at in this section? Don't limit
+yourself to relationships between a main output feature and one of the
+supporting variables. Try to look at relationships between supporting variables
+as well.
+
+```{r echo=FALSE, Bivariate_Plots}
+
+```
+
+# Bivariate Analysis
+
+> **Tip**: As before, summarize what you found in your bivariate explorations
+here. Use the questions below to guide your discussion.
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. How did the feature(s) of interest vary with other features in \
+the dataset?
+
+### Did you observe any interesting relationships between the other features \
+(not the main feature(s) of interest)?
+
+### What was the strongest relationship you found?
+
+
+# Multivariate Plots Section
+
+> **Tip**: Now it's time to put everything together. Based on what you found in
+the bivariate plots section, create a few multivariate plots to investigate
+more complex interactions between variables. Make sure that the plots that you
+create here are justified by the plots you explored in the previous section. If
+you plan on creating any mathematical models, this is the section where you
+will do that.
+
+```{r echo=FALSE, Multivariate_Plots}
+
+```
+
+# Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. Were there features that strengthened each other in terms of \
+looking at your feature(s) of interest?
+
+### Were there any interesting or surprising interactions between features?
+
+### OPTIONAL: Did you create any models with your dataset? Discuss the \
+strengths and limitations of your model.
+
+------
+
+# Final Plots and Summary
+
+> **Tip**: You've done a lot of exploration and have built up an understanding
+of the structure of and relationships between the variables in your dataset.
+Here, you will select three plots from all of your previous exploration to
+present here as a summary of some of your most interesting findings. Make sure
+that you have refined your selected plots for good titling, axis labels (with
+units), and good aesthetic choices (e.g. color, transparency). After each plot,
+make sure you justify why you chose each plot by describing what it shows.
+
+### Plot One
+```{r echo=FALSE, Plot_One}
+
+```
+
+### Description One
+
+
+### Plot Two
+```{r echo=FALSE, Plot_Two}
+
+```
+
+### Description Two
+
+
+### Plot Three
+```{r echo=FALSE, Plot_Three}
+
+```
+
+### Description Three
+
+------
+
+# Reflection
+
+> **Tip**: Here's the final step! Reflect on the exploration you performed and
+the insights you found. What were some of the struggles that you went through?
+What went well? What was surprising? Make sure you include an insight into
+future work that could be done with the dataset.
+
+> **Tip**: Don't forget to remove this, and the other **Tip** sections before
+saving your final work and knitting the final report!
+
+
