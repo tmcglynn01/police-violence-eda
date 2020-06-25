@@ -8,13 +8,20 @@ output: html_document
 ```{r setup, include=FALSE}
 library(tidyverse)
 library(magrittr)
+library(knitr)
+library(kableExtra)
+library(RColorBrewer)
+library(quantreg)
 
+PALLETTE <- function(){
+  return(scale_fill_brewer(palette = "Reds"))
+}
 police <- read.csv('PoliceKillingsUS.csv')
 ```
 ## Dataset for Police Killings
 This first dataset contains observations for police killings which occurred in the US. It's variables are a name, date, and ID for each case, the city and state where the incident occurred, the victim's age and race, and some other details about the victim's encounter with police (such as whether they had a weapon, or whether the police officer was wearing a body cam). 
 
-```{r polive-overview}
+```{r polive-overview, echo=FALSE}
 unique(police$manner_of_death)
 sample(unique(police$armed), 20)
 unique(police$race)
@@ -32,15 +39,14 @@ That said, the scope of this analysis will look at the following from this table
 * Dates (full annual data for 2015 and 2016, partial 2017)
 ```{r pipe-police-tbl}
 # This pipe creates tibble 'df' from 'police' with column selections.
-# Adds: year, month, day, just_force
-# 'just_force': Let's suppose justified use of force would be when an officer 
+# Adds: year, month, day, unjust_force
+# 'unjust_force': Let's suppose justified use of force would be when an officer 
 # encounters someone who has equal power of force (another gun). We'll look at 
 # those in a different context. The use of force is arguably more nuanced than 
 # this, however it creates a good baseline to frame what is, and is not, 
 # 'appropriate' use of deadly force by equally matching force available.
 
 police <- police %>%
-  group_by(id) %>%
   filter(gender == 'M') %>%
   select(-gender, -manner_of_death, -threat_level) %>%
   rename(illness = signs_of_mental_illness, cam = body_camera) %>%
@@ -49,7 +55,7 @@ police <- police %>%
          month = month(date),
          day = day(date),
          name = as.character(name),
-         just_force = armed == 'gun') %>%
+         unjust_force = armed == 'unarmed') %>%
   select(-date) %>%
   arrange(year, month, day)
 ```
@@ -61,7 +67,7 @@ This next data set joins demographics for cities across the US. Statistics inclu
 * Share of Race by City
 
 These will be joined with a cities table based on city and state. The `cities` table is derived from the `police` table and will include all cities where there was a victim from a police shooting, and a count of cases for that particular city. We'll also tidy the data for upcoming statistical summaries. 
-```{r demographics-tidying, message=FALSE, warning=FALSE}
+```{r demographics-setup, message=FALSE, warning=FALSE}
 # Create a 'cities' data frame from 'df' which will hold all unique city names 
 # and their count of police killings, arranged by state then city, which seemed
 # like the simplest way to match the tables quickly, given the data on hand
@@ -103,6 +109,8 @@ stats <- stats %>%
   mutate(city = sub('(.*)(\\s\\w+)$', '\\1', city))
 
 cities <- left_join(cities, stats)
+```
+```{r demographic-tidy, echo=FALSE, message=FALSE, warning=FALSE}
 cities$income <- (as.numeric(levels(cities$income))[cities$income])
 cities$poverty <- (as.numeric(levels(cities$poverty))[cities$poverty]) / 100
 cities$hs_completion <- (as.numeric(levels(cities$hs_completion))[cities$hs_completion]) / 100
@@ -112,11 +120,11 @@ cities$N <- (as.numeric(levels(cities$N))[cities$N]) / 100
 cities$A <- (as.numeric(levels(cities$A))[cities$A]) / 100
 cities$H <- (as.numeric(levels(cities$H))[cities$H]) / 100
 rm(stats)
-cities
+cities <- cities %>% ungroup(city, state)
+head(cities)
 ```
-
-# Univariate Plots Section
-This is a prelinary exploration of the dataset for summaries and univariate plots.
+# Univariate Plots
+This is a preliminary exploration of the dataset for summaries and univariate plots.
 
 > **Tip**: In this section, you should perform some preliminary exploration of
 your dataset. Run some summaries of the data and create univariate plots to
@@ -125,30 +133,86 @@ forget to add a comment after each plot or closely-related group of plots!
 There should be multiple code chunks and text sections; the first one below is
 just to help you get started.
 
-```{r echo=FALSE, Univariate_Plots}
+## Univariate Summaries
+```{r echo=FALSE, Univariate-summaries}
+table_styles = c('striped', 'hover', 'condensed', 'responsive')
+# Weapons 
+(weapons_uni <- police %>% select(armed) %>% group_by(armed) %>% count(sort = TRUE))
+# Victim stats
+victims_uni <- police %>% select(age, race, illness, year:day)
+kable(summary(victims_uni), caption = 'Statistics about Victims') %>% 
+  kable_styling(bootstrap_options = table_styles)
+# Police stats
+police_uni <- police %>% select(city, state, flee:unjust_force)
+kable(summary(police_uni), caption = 'Summary Statistics about Police') %>% 
+  kable_styling(bootstrap_options = table_styles)
 
+# Demographics except race    
+dems_uni <- cities %>% select(-city, -(W:H))
+kable(summary(dems_uni), caption = 'Demographics for Represented Cities') %>%
+  kable_styling(bootstrap_options = table_styles)
+
+# Racial Makeup of rep cities
+(race_uni <- cities %>% 
+  select(W:H) %>%
+  summarize_all(funs(mean), na.rm = TRUE))
 ```
+## Univariate Plots
+```{r Univariate-plots, echo=FALSE}
+## WEAPONS plotting
+ggplot(weapons_uni %>% group_by(armed) %>% filter(n > 9) %>% arrange(desc(n)), 
+       mapping = aes(reorder(armed, -n), n, fill = armed)) +
+  geom_col() +
+  scale_y_log10() +
+  coord_flip() +
+  labs(title = 'Top Weapons Used', y = 'Count (logarithmic)', x = 'Weapon Used') +
+  scale_fill_brewer(palette = 'Blues')
 
+## VICTIMS plotting
+ggplot(victims_uni %>% select(age, race),
+       mapping = aes(x = race, y = age, fill = race)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette = 'Blues') +
+  scale_y_continuous(breaks = seq(10, 100, by = 10)) +
+  labs(title = 'Age Distribution by Race', x = 'Race', y = 'Age')
+
+ggplot(victims_uni %>% select(age), mapping = aes(x = age, fill = 'red')) +
+  geom_dotplot(binwidth = 0.5, show.legend = FALSE) +
+  labs(title = 'Distribution of Ages of Victims', x = 'Age')
+
+## DEMOGRAPHICS plotting
+ggplot(dems_uni %>% select(income), mapping = aes(income, fill = 'red')) +
+  geom_dotplot(binwidth = 1400, show.legend = FALSE) +
+  labs(title = 'Represented Cities: Median Income', x='Median Income', y='')
+
+ggplot(dems_uni %>% select(poverty), mapping = aes(poverty, fill = 'red')) +
+  geom_dotplot(binwidth = 0.008, method = 'histodot', show.legend = FALSE) +
+  labs(title = 'Represented Cities: Poverty Rate', x='Poverty Rate', y='')
+
+ggplot(dems_uni %>% select(hs_completion), mapping = aes(hs_completion, fill = 'red')) +
+  geom_dotplot(binwidth = 0.008, show.legend = FALSE) +
+  labs(title = 'Represented Cities: HS Graduation Rate', x='HS Graduation Rate', y='')
+```
 # Univariate Analysis
 
-> **Tip**: Now that you've completed your univariate explorations, it's time to
-reflect on and summarize what you've found. Use the questions below to help you
-gather your observations and add your own if you have other thoughts!
+## Age of Victims
+The median age for victims of police shootings is `r summary(victims_uni$age)['Median']`, which is higher than expected, and leaving the data set skewed right according to age.
 
-### What is the structure of your dataset?
+## Demographics Data for Cities
+**Median income** across the represented cities is `r summary(dems_uni$income)['Median']`
+**Poverty rates** across the represented cities average `r summary(dems_uni$poverty)['Mean']`
+**High School Completion Rates** across the represented cities average `r summary(dems_uni$hs_completion)['Mean']`
 
-### What is/are the main feature(s) of interest in your dataset?
+## Weapons Used
+Guns were the overwhelming majority of weapons used by victims during encounters where police shootings occur, followed by knives and vehicles. Some of the more rare weapons can be seen below.
 
-### What other features in the dataset do you think will help support your \
-investigation into your feature(s) of interest?
+With weapons, one issue seems to be duplicate categories for unidentified weapons: `undetermined` and `unknown_weapon`. This must be address before further comparison.
 
-### Did you create any new variables from existing variables in the dataset?
-
-### Of the features you investigated, were there any unusual distributions? \
-Did you perform any operations on the data to tidy, adjust, or change the form \
-of the data? If so, why did you do this?
-
-# Bivariate Plots Section
+```{r interesting-weapons, echo=FALSE}
+weapons_uni %>% filter(n == 1)
+rm(police_uni, victims_uni, weapons_uni)
+```
+# Bivariate Plots
 
 > **Tip**: Based on what you saw in the univariate plots, what relationships
 between variables might be interesting to look at in this section? Don't limit
@@ -156,26 +220,59 @@ yourself to relationships between a main output feature and one of the
 supporting variables. Try to look at relationships between supporting variables
 as well.
 
-```{r echo=FALSE, Bivariate_Plots}
+```{r Bivariate-plots, echo=FALSE}
+## Demographics Plotting
+ggplot(cities %>% select(deaths, income) %>% filter(deaths > 1),
+       mapping = aes(income, deaths, color = 'red')) +
+  geom_jitter(show.legend = FALSE) +
+  scale_x_continuous(limits = c(35000, 60000))
+ggplot(cities %>% select(deaths, poverty),
+       mapping = aes(poverty, deaths, color = 'red')) +
+  geom_jitter(show.legend = FALSE)
+ggplot(cities %>% select(deaths, hs_completion) %>% filter(deaths > 1),
+       aes(hs_completion, deaths, color = 'red')) + geom_jitter()
+
+## Use of Force by Age
+ggplot(police %>% 
+         filter(year != 2017) %>% 
+         select(age, race, unjust_force) %>%
+         mutate(poc = race %in% c('B', 'H', 'N')) %>%
+         filter(poc == TRUE | race == 'W'),
+       aes(poc, age, fill = poc)) +
+  geom_violin(scale = 'area') +
+  facet_wrap(~ unjust_force) +
+  scale_fill_brewer(palette = 'Blues') +
+  labs(title = 'Use of Unjust Force', 
+       x = 'Person of Color (T/F)', y = 'Age')
+
+## Count by month, by race
+ggplot(police %>% filter(year != 2017) %>% select(month, race), 
+       aes(month, fill = race)) +
+  geom_bar(position = 'fill') +
+  scale_x_continuous(limits = c(0, 12)) +
+  scale_fill_brewer(palette = 'Blues') +
+  labs(title = 'Proportion of Deaths by Race and Month',
+       x = 'Month', y = 'Propotion of Deaths')
 
 ```
-
 # Bivariate Analysis
 
 > **Tip**: As before, summarize what you found in your bivariate explorations
 here. Use the questions below to guide your discussion.
 
-### Talk about some of the relationships you observed in this part of the \
-investigation. How did the feature(s) of interest vary with other features in \
-the dataset?
+### Relationships
 
-### Did you observe any interesting relationships between the other features \
-(not the main feature(s) of interest)?
+#### Demographic Data
+Surprisingly, there was no clear direct relationship between the various demographics data and increased police killings. Instead, it seems that some municipalities are just far, far worse than others when it comes to victims of police shooting. Trends may be easier to see on a state level; cities are too granular for these correlations. Outliers that have a disproportionate amount of deaths typically cluster around the mean for all three metrics (income, poverty, and high school completion)
 
-### What was the strongest relationship you found?
+### Use of Force
+Proportionally against all cases of police killings, people of color face disproportionate unjust use of force, where "unjust" refers to a police officer killing an unarmed person.
 
+For whites, use of force peaks in the victim's late twenties. For people of color, peak it in the early twenties, followed by a second peak for victims in their late 30's. This reflects the median age for victims which is `r median(summary(police$age))`.
 
-# Multivariate Plots Section
+A cursory glance against the distribution of races represented in police killings shows the disproportion of violence directed towards people of color against their respective proportions of the population. From this sample, whites represent `r race_uni['W'] * 100`% of the population, whereas people of color represent `r (race_uni['B'] + race_uni['N'] + race_uni['H']) * 100`% of the population. The graph `Proportion of Deaths by Race and Month` shows almost 50/50 representation of the share of killings, white to people of color.
+
+# Multivariate Plots
 
 > **Tip**: Now it's time to put everything together. Based on what you found in
 the bivariate plots section, create a few multivariate plots to investigate
@@ -185,19 +282,41 @@ you plan on creating any mathematical models, this is the section where you
 will do that.
 
 ```{r echo=FALSE, Multivariate_Plots}
+# Body cams, race, and unjust_force
+ggplot(police %>% 
+         filter(year != 2017) %>%
+         select(race, cam, unjust_force),
+       aes(race, fill = unjust_force)) +
+  geom_bar(position = 'fill') +
+  facet_wrap(~ cam) +
+  PALLETTE() +
+  labs(title = 'Camera Use & Unjust Force by Race (Proportional)',
+       x = 'Race', y = 'Prop')
 
+## VICTIMS Plotting: race, age (bucketed), poc, and illness
+pipe <- police %>%
+  mutate(poc = race %in% c('B','H','N')) %>%
+  select(race, age, poc, illness, unjust_force, flee) %>%
+  filter(race == 'W' | poc == TRUE) %>%
+  drop_na() %>%
+  filter(flee != '')
+BREAKS = c(0, 18, 25, 35, 45, 65, 100)
+
+ggplot(pipe, mapping = aes(x = cut(age, breaks = BREAKS), fill = poc)) +
+  geom_bar(position = 'fill') +
+  scale_fill_brewer(palette = 'Blues') +
+  facet_wrap(~ unjust_force) +
+  labs(title = 'Proportion of Unjust Force Used by Skin Color (Age Groups)',
+       x = 'Age Group', y = 'Prop')
 ```
 
 # Multivariate Analysis
 
-### Talk about some of the relationships you observed in this part of the \
-investigation. Were there features that strengthened each other in terms of \
-looking at your feature(s) of interest?
+### Relationships
 
-### Were there any interesting or surprising interactions between features?
+### Interactions Among Features
 
-### OPTIONAL: Did you create any models with your dataset? Discuss the \
-strengths and limitations of your model.
+### OPTIONAL: Models
 
 ------
 
@@ -213,26 +332,57 @@ make sure you justify why you chose each plot by describing what it shows.
 
 ### Plot One
 ```{r echo=FALSE, Plot_One}
-
+ggplot(pipe, mapping = aes(x = cut(age, breaks = BREAKS), fill = poc)) +
+  geom_bar(position = 'fill') +
+  scale_fill_brewer(palette = 'Blues') +
+  facet_wrap(~ unjust_force) +
+  labs(title = 'Proportion of Unjust Force Used by Skin Color (Age Groups)',
+       x = 'Age Group', y = 'Prop')
 ```
 
 ### Description One
+This first plot shows quite clearly how, by proportion of police-induced fatalities, people of color make up a dominant proportion of cases against nearly all age groups **where unjust force is used**. Unjust force was defined in the context of this analysis as the *use of deadly force by a police officer on an unarmed victim*. These graphs show the proportion of total fatalities by police, however all of this becomes more striking when considering the racial makeup of the sample itself:
 
+  Sample proportion PoC: `r race_uni['B'] + race_uni['N'] + race_uni['H']`
+  Sample proportion White: `r as.double(race_uni['W'])`
+  
+From this analysis, it's clear that people of color are disproportionately represented in unjustified police violence, and are far more likely to encounter it than white counterparts.
 
 ### Plot Two
 ```{r echo=FALSE, Plot_Two}
-
+# Body cams, race, and unjust_force
+ggplot(police %>% 
+         filter(year != 2017, race != '', race != 'A') %>%
+         select(race, cam, unjust_force),
+       aes(race, fill = unjust_force)) +
+  geom_bar(position = 'fill') +
+  facet_wrap(~ cam) +
+  scale_fill_brewer(palette = 'Blues') +
+  labs(title = 'Camera Use & Unjust Force by Race (Proportional)',
+       x = 'Race', y = 'Prop')
 ```
 
 ### Description Two
-
+The race of a suspect is more likely to be recorded as "other" when unjust force is used and the officer is wearing a body camera. Furthermore, the two race factors with the greatest share of unjust force cases is "other" (1st) and "black" (2nd).
 
 ### Plot Three
 ```{r echo=FALSE, Plot_Three}
-
+## Use of Force by Age
+ggplot(police %>% 
+         filter(year != 2017) %>% 
+         select(age, race, unjust_force) %>%
+         mutate(poc = race %in% c('B', 'H', 'N')) %>%
+         filter(poc == TRUE | race == 'W'),
+       aes(poc, age, fill = poc)) +
+  geom_violin(scale = 'area') +
+  facet_wrap(~ unjust_force) +
+  scale_fill_brewer(palette = 'Blues') +
+  labs(title = 'Use of Unjust Force', 
+       x = 'Person of Color (T/F)', y = 'Age')
 ```
 
 ### Description Three
+Unjust force by age and race is again clearly shown through this violin plot, but shows an interesting relationship unjust force against persons of color peaks when the victim is in their early twenties, but then increases again in their late thirties. With George Floyd's death in the spotlight, and many brown men in their late-thirties who have died from unjust use of police force, it's important to consider this and *why* it may be.
 
 ------
 
