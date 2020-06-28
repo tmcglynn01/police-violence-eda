@@ -263,6 +263,8 @@ Correlations between the components of the demographics data by state yielded le
 ### Use of Force
 People of color, by proportion of fatal interactions with police, occupy almost twice as many cases as non-PoC. They are **far more likely** to be victims of police violence than others.
 
+Unjust force by age and race is again clearly shown through this violin plot, but shows an interesting relationship unjust force against persons of color peaks when the victim is in their early twenties, but then increases again in their late thirties. With George Floyd's death in the spotlight, and many brown men in their late-thirties who have died from unjust use of police force, it's important to consider this and *why* it may be.
+
 ### Race and Age
 The violin plot on race and age by use of force shows the distribution of age for victims and whether they were a person of color, faceted against the unjust use of force. One key anamoly will be highlighted later in the report.
 
@@ -300,44 +302,11 @@ p1_var <- cities %>% drop_na() %>% summarize(poc = mean(B+H+N), white = mean(W+A
 * Camera use and the inclination for race to be marked as 'other'
 * Use of unjust force against skin color for all age groups is greater for people of color than whites, and this is true across nearly all of the age groups defined in this analysis
 
-------
+The race of a suspect is more likely to be recorded as "other" when unjust force is used and the officer is wearing a body camera. Furthermore, the two race factors with the greatest share of unjust force cases is "other" (1st) and "black" (2nd).
 
-# Final Plots and Summary
-
-### Plot One
-```{r echo=FALSE, Plot_One}
-p1
-```
-
-### Description One
 This first plot shows quite clearly how, by proportion of police-induced fatalities, people of color make up a dominant proportion of cases against nearly all age groups **where unjust force is used**. Unjust force was defined in the context of this analysis as the *use of deadly force by a police officer on an unarmed victim*. These graphs show the proportion of total fatalities by police, however all of this becomes more striking when considering the racial makeup of the sample itself:
 
 * **Share of PoC Population** in cities represented by this sample: `r p1_var['poc'] * 100`%
 * **Share of non-PoC Population** in cities represented by this sample: `r p1_var['white'] * 100`%
   
 From this analysis, it's clear that people of color are disproportionately represented in unjustified police violence, and are far more likely to encounter it than white counterparts.
-
-### Plot Two
-```{r echo=FALSE, Plot_Two, warning=FALSE}
-# Body cams, race, and unjust_force
-p2
-```
-
-### Description Two
-The race of a suspect is more likely to be recorded as "other" when unjust force is used and the officer is wearing a body camera. Furthermore, the two race factors with the greatest share of unjust force cases is "other" (1st) and "black" (2nd).
-
-### Plot Three
-```{r echo=FALSE, Plot_Three}
-## Use of Force by Age
-p3
-```
-
-### Description Three
-Unjust force by age and race is again clearly shown through this violin plot, but shows an interesting relationship unjust force against persons of color peaks when the victim is in their early twenties, but then increases again in their late thirties. With George Floyd's death in the spotlight, and many brown men in their late-thirties who have died from unjust use of police force, it's important to consider this and *why* it may be.
-
-------
-
-# Reflection
-Choosing appropriate plots seems to be the hardest. It helps to breaks the values down and know what's discrete, what's continuous, how many variables one plans to include in a plot, and finally what the overall effect should be. This data set dealt with a larger amount of discrete variables; knowing what works well for more variables requiring continuous analysis should be considered for future projects.
-
-Knowing how best to work with bivariate plots, specifically correlations, is another point of improvement needed for future analyses.
